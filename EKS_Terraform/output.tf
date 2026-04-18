@@ -1,15 +1,15 @@
-output "cluster_id" {
-  value = aws_eks_cluster.devopsshack.id
+output "cluster_name" {
+  value = aws_eks_cluster.main.name
 }
 
-output "node_group_id" {
-  value = aws_eks_node_group.devopsshack.id
+output "cluster_endpoint" {
+  value = aws_eks_cluster.main.endpoint
 }
 
 output "vpc_id" {
-  value = aws_vpc.devopsshack_vpc.id
+  value = aws_vpc.main_vpc.id
 }
 
 output "subnet_ids" {
-  value = aws_subnet.devopsshack_subnet[*].id
+  value = aws_subnet.main_subnet[*].id
 }
