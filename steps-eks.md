@@ -1,17 +1,20 @@
-reate Service Account, Role & Assign that role, And create a secret for Service Account and geenrate a Token
+## Create Service Account, Role & Assign that role, And create a secret for Service Account and geenrate a Token
+
+### Creating Service Account
 
 
-Creating Service Account
-
+```yaml
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: jenkins
   namespace: webapps
+```
+
+### Create Role 
 
 
-Create Role
-
+```yaml
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -50,7 +53,12 @@ rules:
       - serviceaccounts
       - services
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-Bind the role to service account
+```
+
+### Bind the role to service account
+
+
+```yaml
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
@@ -63,9 +71,9 @@ roleRef:
 subjects:
 - namespace: webapps 
   kind: ServiceAccount
-  name: jenkins
+  name: jenkins 
+```
 
+### Generate token using service account in the namespace
 
-  Generate token using service account in the namespace
-
-  https://kubernetes.io/docs/reference/access-authn-authz/service-accounts-admin/#:~:text=To%20create%20a%20non%2Dexpiring,with%20that%20generated%20token%20data.
+[Create Token](https://kubernetes.io/docs/reference/access-authn-authz/service-accounts-admin/#:~:text=To%20create%20a%20non%2Dexpiring,with%20that%20generated%20token%20data.)
