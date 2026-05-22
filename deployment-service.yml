@@ -2,6 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: twitter
+  namespace: webapps
 spec:
   selector:
     matchLabels:
@@ -14,22 +15,23 @@ spec:
     spec:
       containers:
         - name: twitter-application
-          image: jeeva08raj/twitterapp:2nd-release # Updated image to private DockerHub image
+          image: jeeva08raj/twitterapp:2nd-release
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
       imagePullSecrets:
-        - name: regcred # Reference to the Docker registry secret
+        - name: regcred
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: twitterapp-ssvc
+  namespace: webapps
 spec:
   selector:
     app: twitterapp
   ports:
     - protocol: "TCP"
       port: 80
-      targetPort: 8080 
+      targetPort: 8080
   type: LoadBalancer
