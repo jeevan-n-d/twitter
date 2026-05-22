@@ -82,8 +82,8 @@ subjects:
 
 kubectl create secret docker-registry regcred \
   --docker-server=https://index.docker.io/v1/ \
-  --docker-username=YOUR_USERNAME \
-  --docker-password=YOUR_PASSWORD \
+  --docker-username=jeeva08raj \
+  --docker-password=Jee$123@ND \
   -n webapps
 
 
