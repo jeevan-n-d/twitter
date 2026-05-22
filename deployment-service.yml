@@ -1,20 +1,20 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: bloggingapp-deployment
+  name: twitter
 spec:
   selector:
     matchLabels:
-      app: bloggingapp
+      app: twitterapp
   replicas: 2
   template:
     metadata:
       labels:
-        app: bloggingapp
+        app: twitterapp
     spec:
       containers:
-        - name: bloggingapp
-          image: jeeva08raj/twitterapp:latest # Updated image to private DockerHub image
+        - name: twitter-application
+          image: jeeva08raj/twitterapp:2nd-release # Updated image to private DockerHub image
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
@@ -24,10 +24,10 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: bloggingapp-ssvc
+  name: twitterapp-ssvc
 spec:
   selector:
-    app: bloggingapp
+    app: twitterapp
   ports:
     - protocol: "TCP"
       port: 80
