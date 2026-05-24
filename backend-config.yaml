@@ -17,4 +17,4 @@ spec:
 
     requestPath: /actuator/health
 
-    port: 80
+    port: 8080
