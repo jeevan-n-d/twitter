@@ -1,24 +1,33 @@
 apiVersion: apps/v1
 kind: Deployment
+
 metadata:
   name: twitter
   namespace: webapps
+
 spec:
+  replicas: 3
+
   selector:
     matchLabels:
       app: twitterapp
-  replicas: 3
+
   template:
     metadata:
       labels:
         app: twitterapp
+
     spec:
       containers:
         - name: twitter-application
+
           image: jeeva08raj/twitter:release-3
+
           imagePullPolicy: Always
+
           ports:
             - containerPort: 8080
+
       imagePullSecrets:
         - name: regcred
 
@@ -26,14 +35,21 @@ spec:
 
 apiVersion: v1
 kind: Service
+
 metadata:
   name: twitterapp-ssvc
   namespace: webapps
+
+  annotations:
+    cloud.google.com/backend-config: '{"default":"twitter-backendconfig"}'
+
 spec:
   selector:
     app: twitterapp
+
   ports:
-    - protocol: "TCP"
+    - protocol: TCP
       port: 80
       targetPort: 8080
+
   type: ClusterIP
