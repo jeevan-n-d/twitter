@@ -18,18 +18,30 @@ spec:
         app: twitterapp
 
     spec:
+      imagePullSecrets:
+        - name: regcred
+
       containers:
         - name: twitter-application
-
           image: jeeva08raj/twitter:release-4
-
           imagePullPolicy: Always
 
           ports:
             - containerPort: 8080
 
-      imagePullSecrets:
-        - name: regcred
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            initialDelaySeconds: 90
+            periodSeconds: 15
+
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            initialDelaySeconds: 90
+            periodSeconds: 20
 
 ---
 
