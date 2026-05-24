@@ -1,8 +1,8 @@
 pipeline {
-    agent any
+    agent { label 'worker'}
+
     
     tools {
-        jdk 'jdk17'
         maven 'maven3'
     }
     
@@ -14,11 +14,7 @@ pipeline {
 
         stage('Git Checkout') {
             steps {
-                git branch: 'main',
-                    changelog: false,
-                    credentialsId: 'github',
-                    poll: false,
-                    url: 'https://github.com/jeevan-n-d/blog-app.git'
+                git branch: 'main', credentialsId: 'github-cred', url: 'https://github.com/jeevan-n-d/twitter.git'
             }
         }
         
@@ -33,37 +29,41 @@ pipeline {
                 sh "mvn test"
             }
         }
-        
-        stage('Trivy FS Scan') {
+    
+         stage('Trivy FS Scan') {
             steps {
                 sh "trivy fs --format json -o trivy-report.json ."
             }
         }
         
+        
+        
         stage('SonarQube Analysis') {
             steps {
-                withSonarQubeEnv('sonar-server') {
+                withSonarQubeEnv('sonar-qube') {
                     sh '''
                     $SCANNER_HOME/bin/sonar-scanner \
-                    -Dsonar.projectName=twitter-app \
-                    -Dsonar.projectKey=twitter-app \
-                    -Dsonar.java.binaries=target
+                     -Dsonar.projectName=twitter-app \
+                     -Dsonar.projectKey=twitter-app \
+                     -Dsonar.java.binaries=target/classes \
+                     -Dsonar.exclusions=target/**
                     '''
                 }
             }
         }
-        
-        stage('Build') {
+      
+      
+      stage('Build') {
             steps {
-                sh "mvn package"
+                sh "mvn package -DskipTests"
             }
         }
-        
-        stage('Publish Artifacts') {
+      
+      
+      stage('Publish Artifacts') {
             steps {
                 withMaven(
                     globalMavenSettingsConfig: 'maven-settings',
-                    jdk: 'jdk17',
                     maven: 'maven3',
                     traceability: true
                 ) {
@@ -71,66 +71,64 @@ pipeline {
                 }
             }
         }
-
-        stage('Docker Build') {
+      
+       stage('Docker Build') {
             steps {
-                sh "docker build -t jeeva08raj/twitterapp:latest ."
+                sh "docker build -t jeeva08raj/twitter:release-3 ."
             }
         }
-
-        stage('Docker Login') {
+      
+      
+       stage('Trivy Image Scan') {
             steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'doc-cred',
-                    usernameVariable: 'DOCKER_USER',
-                    passwordVariable: 'DOCKER_PASS'
-                )]) {
-                    sh '''
-                    echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
-                    '''
+                sh '''
+                mkdir -p /home/ubuntu/trivy-tmp
+                TMPDIR=/home/ubuntu/trivy-tmp \
+                trivy image --format json -o trivy-image.json jeeva08raj/twitter:release-3
+                '''
                 }
             }
-        }
-
-        stage('Trivy Image Scan') {
-            steps {
-                sh "trivy image --format json -o trivy-image.json jeeva08raj/twitterapp:latest"
-            }
-        }
-
+            
+            
         stage('Docker Push') {
             steps {
-                sh "docker push jeeva08raj/twitterapp:latest"
+                withDockerRegistry([ url: '', credentialsId: 'docker-cred-' ])  {
+                    sh "docker push jeeva08raj/twitter:release-3"
+                  }
             }
         }
-        
+      
         stage('K8-Deploy') {
             steps {
                 withKubeConfig(
                     credentialsId: 'k8-cred',
                     namespace: 'webapps',
-                    serverUrl: 'https://B8C878566F13A92C937D1369FFB1896D.gr7.eu-west-3.eks.amazonaws.com'
+                    serverUrl: 'https://8.231.72.242'
                 ) {
                     sh "kubectl apply -f deployment-service.yml"
                     sleep 20
                 }
             }
         }
-        
+         
+      
         stage('Verify Deploy') {
             steps {
                 withKubeConfig(
                     credentialsId: 'k8-cred',
                     namespace: 'webapps',
-                    serverUrl: 'https://B8C878566F13A92C937D1369FFB1896D.gr7.eu-west-3.eks.amazonaws.com'
+                    serverUrl: 'https://8.231.72.242'
                 ) {
-                    sh "kubectl get pods"
-                    sh "kubectl get svc"
+                    sh "kubectl get pods -n webapps"
+                    sh "kubectl get svc -n webapps"
                 }
             }
         }
-    }
-
+        
+        
+        
+        
+    }   
     
     post {
         always {
@@ -139,7 +137,6 @@ pipeline {
                 def buildNumber = env.BUILD_NUMBER
                 def pipelineStatus = currentBuild.currentResult
                 def bannerColor = (pipelineStatus == "SUCCESS") ? "green" : "red"
-
                 def body = """
                 <html>
                 <body>
@@ -153,16 +150,16 @@ pipeline {
                 </body>
                 </html>
                 """
-
                 emailext(
                     subject: "${jobName} - Build ${buildNumber} - ${pipelineStatus}",
                     body: body,
-                    to: "rockrollno121@gmail.com",
+                    to: "jeevanrajeshgowda@gmail.com",
                     from: "rockrollno121@gmail.com",
-                    replyTo: "rockrollno121@gmail.com",
+                    replyTo: "4ra22cs040@rithassan.ac.in",
                     mimeType: "text/html"
                 )
             }
         }
     }
 }
+    
