@@ -2,12 +2,12 @@
 
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
          https://maven.apache.org/xsd/maven-4.0.0.xsd">
 
     <modelVersion>4.0.0</modelVersion>
 
-    <!-- Spring Boot Parent -->
+    <!-- Parent -->
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
@@ -15,13 +15,12 @@
         <relativePath/>
     </parent>
 
-    <!-- Project Information -->
+    <!-- Project Info -->
     <groupId>com.example</groupId>
     <artifactId>twitter-app</artifactId>
-    <!--version>0.0.3</version-->
     <version>1.0.1-SNAPSHOT</version>
     <name>twitter-app</name>
-    <description>Demo project for Spring Boot</description>
+    <description>Twitter Clone Spring Boot Application</description>
 
     <!-- Properties -->
     <properties>
@@ -38,7 +37,7 @@
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
 
-        <!-- Spring Boot Security -->
+        <!-- Spring Security -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-security</artifactId>
@@ -56,7 +55,7 @@
             <artifactId>spring-boot-starter-thymeleaf</artifactId>
         </dependency>
 
-        <!-- Thymeleaf Spring Security -->
+        <!-- Thymeleaf Security -->
         <dependency>
             <groupId>org.thymeleaf.extras</groupId>
             <artifactId>thymeleaf-extras-springsecurity6</artifactId>
@@ -69,14 +68,14 @@
             <scope>runtime</scope>
         </dependency>
 
-        <!-- Spring Boot Testing -->
+        <!-- Testing -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
 
-        <!-- Spring Security Testing -->
+        <!-- Spring Security Test -->
         <dependency>
             <groupId>org.springframework.security</groupId>
             <artifactId>spring-security-test</artifactId>
@@ -85,7 +84,7 @@
 
     </dependencies>
 
-    <!-- Build Section -->
+    <!-- Build -->
     <build>
 
         <plugins>
@@ -139,9 +138,10 @@
 
     </build>
 
-    <!-- Artifact Repository -->
+    <!-- Nexus Repository -->
     <distributionManagement>
 
+        <!-- Release Repository -->
         <repository>
             <id>maven-releases</id>
             <url>
@@ -149,6 +149,7 @@
             </url>
         </repository>
 
+        <!-- Snapshot Repository -->
         <snapshotRepository>
             <id>maven-snapshots</id>
             <url>
