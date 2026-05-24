@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: twitter-application
-          image: jeeva08raj/twitter:release-4
+          image: jeeva08raj/twitter:release-3
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
