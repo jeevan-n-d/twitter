@@ -21,7 +21,7 @@ spec:
       containers:
         - name: twitter-application
 
-          image: jeeva08raj/twitter:release-3
+          image: jeeva08raj/twitter:release-4
 
           imagePullPolicy: Always
 
