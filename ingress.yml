@@ -7,6 +7,7 @@ metadata:
 
   annotations:
     kubernetes.io/ingress.class: "gce"
+    networking.gke.io/managed-certificates: myapp-cert
 
 spec:
   ingressClassName: gce
