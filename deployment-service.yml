@@ -7,7 +7,7 @@ spec:
   selector:
     matchLabels:
       app: twitterapp
-  replicas: 2
+  replicas: 3
   template:
     metadata:
       labels:
@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: twitter-application
-          image: jeeva08raj/twitter:release-3
+          image: jeeva08raj/twitter:release-4
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
