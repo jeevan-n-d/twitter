@@ -4,20 +4,24 @@ kind: Ingress
 metadata:
   name: twitter-ingress
   namespace: webapps
+
   annotations:
-    networking.gke.io/managed-certificates: myapp-cert
+    kubernetes.io/ingress.class: "gce"
 
 spec:
   ingressClassName: gce
 
   rules:
-  - host: app.mycoolprojects.online
-    http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: twitterapp-ssvc
-            port:
-              number: 80
+    - host: app.mycoolprojects.online
+
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+
+            backend:
+              service:
+                name: twitterapp-ssvc
+
+                port:
+                  number: 80
