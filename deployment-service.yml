@@ -23,7 +23,7 @@ spec:
 
       containers:
         - name: twitter-application
-          image: jeeva08raj/twitter:v6
+          image: jeeva08raj/twitter:v7
           imagePullPolicy: Always
 
           ports:
