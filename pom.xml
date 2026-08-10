@@ -160,7 +160,7 @@
         <snapshotRepository>
             <id>maven-snapshots</id>
             <url>
-                http://18.61.28.172:8081/repository/maven-releases/
+                http://18.61.28.172:8081/repository/maven-snapshots/
             </url>
         </snapshotRepository>
 
