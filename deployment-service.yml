@@ -1,67 +1,35 @@
 apiVersion: apps/v1
 kind: Deployment
-
 metadata:
-  name: twitter
-  namespace: webapps
-
+  name: bloggingapp-deployment
 spec:
-  replicas: 3
-
   selector:
     matchLabels:
-      app: twitterapp
-
+      app: bloggingapp
+  replicas: 2
   template:
     metadata:
       labels:
-        app: twitterapp
-
+        app: bloggingapp
     spec:
-      imagePullSecrets:
-        - name: regcred
-
       containers:
-        - name: twitter-application
-          image: jeeva08raj/twitter:v8
+        - name: bloggingapp
+          image: adijaiswal/bloggingapp:latest # Updated image to private DockerHub image
           imagePullPolicy: Always
-
           ports:
             - containerPort: 8080
-
-          readinessProbe:
-            httpGet:
-              path: /actuator/health
-              port: 8080
-            initialDelaySeconds: 90
-            periodSeconds: 15
-
-          livenessProbe:
-            httpGet:
-              path: /actuator/health
-              port: 8080
-            initialDelaySeconds: 90
-            periodSeconds: 20
-
+      imagePullSecrets:
+        - name: regcred # Reference to the Docker registry secret
 ---
-
 apiVersion: v1
 kind: Service
-
 metadata:
-  name: twitterapp-ssvc
-  namespace: webapps
-
-  annotations:
-    cloud.google.com/backend-config: '{"default":"twitter-backendconfig"}'
-
+  name: bloggingapp-ssvc
 spec:
   selector:
-    app: twitterapp
-
+    app: bloggingapp
   ports:
-    - protocol: TCP
+    - protocol: "TCP"
       port: 80
-      targetPort: 8080
-
-  type: ClusterIP
+      targetPort: 8080 
+  type: LoadBalancer
