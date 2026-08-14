@@ -30,12 +30,15 @@ pipeline {
     }
 
     stages {
+
         stage('Master Node') {
+
             agent {
                 label 'master'
             }
 
             stages {
+
                 stage('Checkout') {
                     steps {
                         git(
@@ -61,7 +64,9 @@ pipeline {
                     steps {
                         script {
                             withSonarQubeEnv('sonar-server') {
+
                                 def scannerHome = tool 'sonar-scanner'
+
                                 sh """
                                     ${scannerHome}/bin/sonar-scanner \
                                       -Dsonar.projectKey=${PROJECT_KEY} \
@@ -80,31 +85,17 @@ pipeline {
                         sh 'mvn package -DskipTests'
                     }
                 }
-                
-                
-                stage('Trivy FS Scan') {
-                    steps {
-                        sh '''
-                            docker run --rm \
-                              -v /home/ubuntu/jenkins/workspace/twitter:/workspace \
-                              -v /home/ubuntu/.m2:/root/.m2:ro \
-                              aquasec/trivy:0.72.0 \
-                              fs \
-                              --format json \
-                              -o /workspace/trivy-fs-report.json \
-                              /workspace
-                        '''
-                    }
-                }
 
                 stage('Publish Artifacts') {
                     steps {
+
                         withMaven(
                             globalMavenSettingsConfig: 'maven-settings',
                             maven: 'maven',
                             jdk: 'jdk17',
                             traceability: true
                         ) {
+
                             sh 'mvn deploy'
                         }
                     }
@@ -112,34 +103,43 @@ pipeline {
 
                 stage('Prepare Worker Workspace') {
                     steps {
+
                         stash(
                             name: 'application',
                             includes: '**/*',
                             excludes: '.git/**',
                             useDefaultExcludes: false
                         )
+
                         echo "Application workspace transferred to worker"
                     }
                 }
             }
         }
 
+
         stage('Worker Node') {
+
             agent {
                 label 'worker'
             }
 
             stages {
+
                 stage('Restore Workspace') {
                     steps {
+
                         deleteDir()
+
                         unstash 'application'
+
                         echo "Workspace restored on worker"
                     }
                 }
 
                 stage('Build Docker Image') {
                     steps {
+
                         sh """
                             docker build \
                               -t ${DOCKERHUB_REPO}:${IMAGE_TAG} .
@@ -147,8 +147,10 @@ pipeline {
                     }
                 }
 
+
                 stage('Trivy Image Scan') {
                     steps {
+
                         sh """
                             docker run --rm \
                               -v /var/run/docker.sock:/var/run/docker.sock \
@@ -164,8 +166,30 @@ pipeline {
                 }
 
 
+                // ====================================================
+                // TRIVY FILESYSTEM SCAN
+                // ====================================================
+
+                stage('Trivy FS Scan') {
+                    steps {
+
+                        sh '''
+                            docker run --rm \
+                              -v /home/ubuntu/jenkins/workspace/twitter:/workspace \
+                              -v /home/ubuntu/.m2:/root/.m2:ro \
+                              aquasec/trivy:0.72.0 \
+                              fs \
+                              --format json \
+                              -o /workspace/trivy-fs-report.json \
+                              /workspace
+                        '''
+                    }
+                }
+
+
                 stage('Docker Login & Push') {
                     steps {
+
                         withCredentials([
                             usernamePassword(
                                 credentialsId: 'dock-creds',
@@ -173,6 +197,7 @@ pipeline {
                                 passwordVariable: 'DOCKER_PASS'
                             )
                         ]) {
+
                             sh """
                                 echo "\$DOCKER_PASS" | \
                                 docker login \
@@ -193,13 +218,17 @@ pipeline {
                     }
                 }
 
+
                 stage('Deploy App (K8s)') {
                     steps {
+
                         sh """
                             set -e
+
                             export KUBECONFIG=/home/ubuntu/.kube/config
 
                             kubectl config current-context
+
                             kubectl get nodes
 
                             kubectl get namespace ${APP_NAMESPACE} || kubectl create namespace ${APP_NAMESPACE}
@@ -223,10 +252,13 @@ pipeline {
                     }
                 }
 
+
                 stage('Verify Deployment') {
                     steps {
+
                         sh """
                             set -e
+
                             export KUBECONFIG=/home/ubuntu/.kube/config
 
                             kubectl get deployment \
@@ -250,8 +282,10 @@ pipeline {
                     }
                 }
 
+
                 stage('OWASP ZAP Scan') {
                     steps {
+
                         sh """
                             docker run --rm \
                               -u 0 \
@@ -268,42 +302,69 @@ pipeline {
         }
     }
 
+
+    // ====================================================
+    // POST ACTIONS
+    // ONLY FIXED NODE CONTEXT HERE
+    // ====================================================
+
     post {
+
         success {
             echo "Twitter DevSecOps pipeline completed successfully"
         }
+
 
         failure {
             echo "Twitter DevSecOps pipeline failed"
         }
 
+
         always {
-            script {
-                if (fileExists("trivy-fs-report.json")) {
-                    echo "Trivy filesystem report generated"
-                } else {
-                    echo "Trivy filesystem report not found"
+
+            node('worker') {
+
+                script {
+
+                    if (fileExists("trivy-fs-report.json")) {
+
+                        echo "Trivy filesystem report generated"
+
+                    } else {
+
+                        echo "Trivy filesystem report not found"
+                    }
+
+
+                    if (fileExists("${IMG_REPORT}")) {
+
+                        echo "Trivy image report generated"
+
+                    } else {
+
+                        echo "Trivy image report not found"
+                    }
+
+
+                    if (fileExists("${ZAP_REPORT_PATH}")) {
+
+                        echo "ZAP report generated"
+
+                    } else {
+
+                        echo "ZAP report not found"
+                    }
                 }
 
-                if (fileExists("${IMG_REPORT}")) {
-                    echo "Trivy image report generated"
-                } else {
-                    echo "Trivy image report not found"
-                }
 
-                if (fileExists("${ZAP_REPORT_PATH}")) {
-                    echo "ZAP report generated"
-                } else {
-                    echo "ZAP report not found"
-                }
+                archiveArtifacts(
+                    artifacts: 'trivy-fs-report.json,trivy-image.html,Zap-Report.html',
+                    allowEmptyArchive: true
+                )
+
+
+                sh 'docker logout || true'
             }
-
-            archiveArtifacts(
-                artifacts: 'trivy-fs-report.json,trivy-image.html,Zap-Report.html',
-                allowEmptyArchive: true
-            )
-
-            sh 'docker logout || true'
         }
     }
 }
