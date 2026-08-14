@@ -1,4 +1,5 @@
 pipeline {
+
     agent none
 
     tools {
@@ -7,6 +8,7 @@ pipeline {
     }
 
     environment {
+
         GIT_URL = 'https://github.com/jeevan-n-d/twitter.git'
         GIT_BRANCH = 'main'
 
@@ -31,6 +33,10 @@ pipeline {
 
     stages {
 
+        // ====================================================
+        // MASTER NODE
+        // ====================================================
+
         stage('Master Node') {
 
             agent {
@@ -39,8 +45,14 @@ pipeline {
 
             stages {
 
+                // ====================================================
+                // CHECKOUT
+                // ====================================================
+
                 stage('Checkout') {
+
                     steps {
+
                         git(
                             branch: "${GIT_BRANCH}",
                             url: "${GIT_URL}"
@@ -48,21 +60,43 @@ pipeline {
                     }
                 }
 
+
+                // ====================================================
+                // COMPILE
+                // ====================================================
+
                 stage('Compile') {
+
                     steps {
+
                         sh 'mvn clean compile'
                     }
                 }
 
+
+                // ====================================================
+                // TEST
+                // ====================================================
+
                 stage('Test') {
+
                     steps {
+
                         sh 'mvn test'
                     }
                 }
 
+
+                // ====================================================
+                // SONARQUBE ANALYSIS
+                // ====================================================
+
                 stage('SonarQube Analysis') {
+
                     steps {
+
                         script {
+
                             withSonarQubeEnv('sonar-server') {
 
                                 def scannerHome = tool 'sonar-scanner'
@@ -80,13 +114,26 @@ pipeline {
                     }
                 }
 
+
+                // ====================================================
+                // BUILD APPLICATION
+                // ====================================================
+
                 stage('Build Application') {
+
                     steps {
+
                         sh 'mvn package -DskipTests'
                     }
                 }
 
+
+                // ====================================================
+                // PUBLISH ARTIFACTS
+                // ====================================================
+
                 stage('Publish Artifacts') {
+
                     steps {
 
                         withMaven(
@@ -101,7 +148,13 @@ pipeline {
                     }
                 }
 
+
+                // ====================================================
+                // PREPARE WORKER WORKSPACE
+                // ====================================================
+
                 stage('Prepare Worker Workspace') {
+
                     steps {
 
                         stash(
@@ -118,6 +171,10 @@ pipeline {
         }
 
 
+        // ====================================================
+        // WORKER NODE
+        // ====================================================
+
         stage('Worker Node') {
 
             agent {
@@ -126,7 +183,12 @@ pipeline {
 
             stages {
 
+                // ====================================================
+                // RESTORE WORKSPACE
+                // ====================================================
+
                 stage('Restore Workspace') {
+
                     steps {
 
                         deleteDir()
@@ -137,7 +199,13 @@ pipeline {
                     }
                 }
 
+
+                // ====================================================
+                // BUILD DOCKER IMAGE
+                // ====================================================
+
                 stage('Build Docker Image') {
+
                     steps {
 
                         sh """
@@ -148,10 +216,17 @@ pipeline {
                 }
 
 
+                // ====================================================
+                // TRIVY IMAGE SCAN
+                // ====================================================
+
                 stage('Trivy Image Scan') {
+
                     steps {
 
                         sh """
+                            mvn dependency:resolve -Dmaven.repo.local=/tmp/maven-repository
+
                             docker run --rm \
                               -v /var/run/docker.sock:/var/run/docker.sock \
                               -v \$(pwd):/workspace \
@@ -171,6 +246,7 @@ pipeline {
                 // ====================================================
 
                 stage('Trivy FS Scan') {
+
                     steps {
 
                         sh '''
@@ -187,7 +263,12 @@ pipeline {
                 }
 
 
+                // ====================================================
+                // DOCKER LOGIN & PUSH
+                // ====================================================
+
                 stage('Docker Login & Push') {
+
                     steps {
 
                         withCredentials([
@@ -219,7 +300,12 @@ pipeline {
                 }
 
 
+                // ====================================================
+                // KUBERNETES DEPLOYMENT
+                // ====================================================
+
                 stage('Deploy App (K8s)') {
+
                     steps {
 
                         sh """
@@ -253,7 +339,12 @@ pipeline {
                 }
 
 
+                // ====================================================
+                // VERIFY DEPLOYMENT
+                // ====================================================
+
                 stage('Verify Deployment') {
+
                     steps {
 
                         sh """
@@ -283,7 +374,12 @@ pipeline {
                 }
 
 
+                // ====================================================
+                // OWASP ZAP SCAN
+                // ====================================================
+
                 stage('OWASP ZAP Scan') {
+
                     steps {
 
                         sh """
@@ -305,20 +401,64 @@ pipeline {
 
     // ====================================================
     // POST ACTIONS
-    // ONLY FIXED NODE CONTEXT HERE
     // ====================================================
 
     post {
 
+        // ====================================================
+        // SUCCESS EMAIL
+        // ====================================================
+
         success {
+
             echo "Twitter DevSecOps pipeline completed successfully"
+
+            mail(
+                to: 'jeevanrajeshgowda@gmail.com',
+                subject: "SUCCESS: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                body: """
+                Twitter DevSecOps Pipeline Completed Successfully
+
+                Job: ${env.JOB_NAME}
+                Build Number: ${env.BUILD_NUMBER}
+                Status: SUCCESS
+
+                Build URL:${env.BUILD_URL}
+                """
+            )
         }
 
+
+        // ====================================================
+        // FAILURE EMAIL
+        // ====================================================
 
         failure {
+
             echo "Twitter DevSecOps pipeline failed"
+
+            mail(
+                to: 'jeevanrajeshgowda@gmail.com',
+                subject: "FAILURE: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                body: """
+                Twitter DevSecOps Pipeline Failed
+
+                Job: ${env.JOB_NAME}
+                Build Number: ${env.BUILD_NUMBER}
+                Status: FAILURE
+
+                Please check the Jenkins console output.
+
+                Build URL:
+                ${env.BUILD_URL}
+                """
+            )
         }
 
+
+        // ====================================================
+        // ALWAYS
+        // ====================================================
 
         always {
 
