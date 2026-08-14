@@ -1,9 +1,16 @@
-## Create Service Account, Role & Assign that role, And create a secret for Service Account and geenrate a Token
+# Kubernetes Jenkins RBAC — Clean Setup
 
-### Creating Service Account
+## 1. Create Namespace
 
+```bash
+kubectl create namespace webapps
+```
+
+## 2. Create ServiceAccount
 
 ```yaml
+# serviceaccount.yaml
+
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -11,67 +18,176 @@ metadata:
   namespace: webapps
 ```
 
-### Create Role 
+```bash
+kubectl apply -f serviceaccount.yaml
+```
 
+## 3. Create Role
 
 ```yaml
+# role.yaml
+
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: app-role
   namespace: webapps
+
 rules:
-  - apiGroups:
-        - ""
-        - apps
-        - autoscaling
-        - batch
-        - extensions
-        - policy
-        - rbac.authorization.k8s.io
+  - apiGroups: [""]
     resources:
       - pods
-      - secrets
-      - componentstatuses
-      - configmaps
-      - daemonsets
-      - deployments
-      - events
-      - endpoints
-      - horizontalpodautoscalers
-      - ingress
-      - jobs
-      - limitranges
-      - namespaces
-      - nodes
-      - pods
-      - persistentvolumes
-      - persistentvolumeclaims
-      - resourcequotas
-      - replicasets
-      - replicationcontrollers
-      - serviceaccounts
       - services
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+      - configmaps
+      - secrets
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+
+  - apiGroups: ["apps"]
+    resources:
+      - deployments
+      - replicasets
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+
+  - apiGroups: ["networking.k8s.io"]
+    resources:
+      - ingresses
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
 ```
 
-### Bind the role to service account
+```bash
+kubectl apply -f role.yaml
+```
 
+## 4. Create RoleBinding
 
 ```yaml
+# rolebinding.yaml
+
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: app-rolebinding
-  namespace: webapps 
+  namespace: webapps
+
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: app-role 
+  name: app-role
+
 subjects:
-- namespace: webapps 
-  kind: ServiceAccount
-  name: jenkins 
+  - kind: ServiceAccount
+    name: jenkins
+    namespace: webapps
+```
+
+```bash
+kubectl apply -f rolebinding.yaml
+```
+
+## 5. Verify
+
+```bash
+kubectl get sa -n webapps
+kubectl get role -n webapps
+kubectl get rolebinding -n webapps
+```
+
+## 6. Test ServiceAccount Permissions
+
+```bash
+kubectl auth can-i create deployments \
+  --as=system:serviceaccount:webapps:jenkins \
+  -n webapps
+```
+
+Should return:
+
+```
+yes
+```
+
+## 7. Generate Token
+
+```bash
+kubectl create token jenkins -n webapps
+```
+
+Copy the generated token.
+
+## 8. Get EKS API Server
+
+```bash
+aws eks describe-cluster \
+  --region ap-south-2 \
+  --name myproject-cluster \
+  --query 'cluster.endpoint' \
+  --output text
+```
+
+## 9. Get CA Certificate
+
+```bash
+aws eks describe-cluster \
+  --region ap-south-2 \
+  --name myproject-cluster \
+  --query 'cluster.certificateAuthority.data' \
+  --output text
+```
+
+## 10. Jenkins Credential
+
+Create Jenkins credential:
+
+```
+ID: k8-cred
+```
+
+Use:
+
+```
+EKS API Server
+CA Certificate
+ServiceAccount Token
+```
+
+Then your Jenkinsfile uses:
+
+```groovy
+withKubeConfig(
+    credentialsId: 'k8-cred',
+    namespace: 'webapps'
+) {
+    sh '''
+        kubectl get nodes
+        kubectl apply -f kubernetes/
+    '''
+}
+```
+
+---
+
+That's the complete Namespace → ServiceAccount → Role → RoleBinding → Token → Jenkins flow.
 ```
 
 ### Generate token using service account in the namespace

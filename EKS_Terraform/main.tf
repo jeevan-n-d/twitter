@@ -1,8 +1,5 @@
-provider "aws" {
-  region = var.region
-}
-
 # ---------------- VPC ----------------
+
 resource "aws_vpc" "main_vpc" {
   cidr_block = "10.0.0.0/16"
 
@@ -12,12 +9,13 @@ resource "aws_vpc" "main_vpc" {
 }
 
 # ---------------- Subnets ----------------
+
 resource "aws_subnet" "main_subnet" {
   count = 2
 
   vpc_id                  = aws_vpc.main_vpc.id
   cidr_block              = cidrsubnet(aws_vpc.main_vpc.cidr_block, 8, count.index)
-  availability_zone       = element(var.azs, count.index)
+  availability_zone       = var.azs[count.index]
   map_public_ip_on_launch = true
 
   tags = {
@@ -26,6 +24,7 @@ resource "aws_subnet" "main_subnet" {
 }
 
 # ---------------- Internet Gateway ----------------
+
 resource "aws_internet_gateway" "igw" {
   vpc_id = aws_vpc.main_vpc.id
 
@@ -35,6 +34,7 @@ resource "aws_internet_gateway" "igw" {
 }
 
 # ---------------- Route Table ----------------
+
 resource "aws_route_table" "rt" {
   vpc_id = aws_vpc.main_vpc.id
 
@@ -49,14 +49,14 @@ resource "aws_route_table" "rt" {
 }
 
 resource "aws_route_table_association" "assoc" {
-  count          = 2
+  count = 2
+
   subnet_id      = aws_subnet.main_subnet[count.index].id
   route_table_id = aws_route_table.rt.id
 }
 
-# ---------------- Security Groups ----------------
+# ---------------- Security Group ----------------
 
-# Cluster SG
 resource "aws_security_group" "cluster_sg" {
   vpc_id = aws_vpc.main_vpc.id
 
@@ -72,30 +72,8 @@ resource "aws_security_group" "cluster_sg" {
   }
 }
 
-# Node SG (FIXED - not fully open)
-resource "aws_security_group" "node_sg" {
-  vpc_id = aws_vpc.main_vpc.id
+# ---------------- IAM - Cluster ----------------
 
-  ingress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"] 
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  tags = {
-    Name = "${var.project_name}-node-sg"
-  }
-}
-
-# ---------------- IAM ----------------
 resource "aws_iam_role" "cluster_role" {
   name = "${var.project_name}-cluster-role"
 
@@ -119,6 +97,8 @@ resource "aws_iam_role_policy_attachment" "cluster_policy" {
   role       = aws_iam_role.cluster_role.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
 }
+
+# ---------------- IAM - Nodes ----------------
 
 resource "aws_iam_role" "node_role" {
   name = "${var.project_name}-node-role"
@@ -155,6 +135,7 @@ resource "aws_iam_role_policy_attachment" "ecr_policy" {
 }
 
 # ---------------- EKS Cluster ----------------
+
 resource "aws_eks_cluster" "main" {
   name     = "${var.project_name}-cluster"
   role_arn = aws_iam_role.cluster_role.arn
@@ -169,12 +150,14 @@ resource "aws_eks_cluster" "main" {
   }
 }
 
-# ---------------- Node Group ----------------
+# ---------------- EKS Node Group ----------------
+
 resource "aws_eks_node_group" "main" {
   cluster_name    = aws_eks_cluster.main.name
   node_group_name = "${var.project_name}-node-group"
   node_role_arn   = aws_iam_role.node_role.arn
-  subnet_ids      = aws_subnet.main_subnet[*].id
+
+  subnet_ids = aws_subnet.main_subnet[*].id
 
   depends_on = [
     aws_iam_role_policy_attachment.node_policy,
@@ -183,20 +166,16 @@ resource "aws_eks_node_group" "main" {
   ]
 
   scaling_config {
-    desired_size = 2
+    desired_size = 1
     max_size     = 3
     min_size     = 1
   }
 
-  instance_types = ["t3.medium"] # ✅ updated
-
-  remote_access {
-    ec2_ssh_key = var.ssh_key_name
-    source_security_group_ids = [aws_security_group.node_sg.id]
-  }
+  instance_types = ["t3.medium"]
 }
 
-# ---------------- EKS ADDONS ----------------
+# ---------------- EKS Addons ----------------
+
 resource "aws_eks_addon" "vpc_cni" {
   cluster_name = aws_eks_cluster.main.name
   addon_name   = "vpc-cni"

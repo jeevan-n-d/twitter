@@ -1,165 +1,309 @@
 pipeline {
-    agent { label 'worker'}
+    agent none
 
-    
     tools {
-        maven 'maven3'
+        maven 'maven'
+        jdk 'jdk17'
     }
-    
+
     environment {
-        SCANNER_HOME = tool 'sonar-scanner'
+        GIT_URL = 'https://github.com/jeevan-n-d/twitter.git'
+        GIT_BRANCH = 'main'
+
+        PROJECT_KEY = 'twitter-app'
+        PROJECT_NAME = 'twitter-app'
+
+        DOCKERHUB_REPO = 'jeeva08raj/twitter'
+        IMAGE_TAG = "${BUILD_NUMBER}"
+
+        TRIVY_IMAGE = 'aquasec/trivy:0.72.0'
+        IMG_REPORT = 'trivy-image.html'
+
+        APP_NAMESPACE = 'webapps'
+
+        ZAP_REPORT_PATH = 'Zap-Report.html'
+        TARGET_URL = 'http://a34df0a3239464d4d8816dae857d3663-2001816633.ap-south-2.elb.amazonaws.com/'
+    }
+
+    options {
+        timeout(time: 30, unit: 'MINUTES')
     }
 
     stages {
+        stage('Master Node') {
+            agent {
+                label 'master'
+            }
 
-        stage('Git Checkout') {
-            steps {
-                git branch: 'main', credentialsId: 'github-cred', url: 'https://github.com/jeevan-n-d/twitter.git'
-            }
-        }
-        
-        stage('Compile') {
-            steps {
-                sh "mvn clean compile"
-            }
-        }
-        
-        stage('Test') {
-            steps {
-                sh "mvn test"
-            }
-        }
-    
-         stage('Trivy FS Scan') {
-            steps {
-                sh "trivy fs --format json -o trivy-report.json ."
-            }
-        }
-        
-        
-        
-        stage('SonarQube Analysis') {
-            steps {
-                withSonarQubeEnv('sonar-qube') {
-                    sh '''
-                    $SCANNER_HOME/bin/sonar-scanner \
-                     -Dsonar.projectName=twitter-app \
-                     -Dsonar.projectKey=twitter-app \
-                     -Dsonar.java.binaries=target/classes \
-                     -Dsonar.exclusions=target/**
-                    '''
+            stages {
+                stage('Checkout') {
+                    steps {
+                        git(
+                            branch: "${GIT_BRANCH}",
+                            url: "${GIT_URL}"
+                        )
+                    }
+                }
+
+                stage('Compile') {
+                    steps {
+                        sh 'mvn clean compile'
+                    }
+                }
+
+                stage('Test') {
+                    steps {
+                        sh 'mvn test'
+                    }
+                }
+
+                stage('SonarQube Analysis') {
+                    steps {
+                        script {
+                            withSonarQubeEnv('sonar-server') {
+                                def scannerHome = tool 'sonar-scanner'
+                                sh """
+                                    ${scannerHome}/bin/sonar-scanner \
+                                      -Dsonar.projectKey=${PROJECT_KEY} \
+                                      -Dsonar.projectName="${PROJECT_NAME}" \
+                                      -Dsonar.sources=. \
+                                      -Dsonar.java.binaries=target/classes \
+                                      -Dsonar.exclusions=target/**
+                                """
+                            }
+                        }
+                    }
+                }
+
+                stage('Build Application') {
+                    steps {
+                        sh 'mvn package -DskipTests'
+                    }
+                }
+                
+                
+                stage('Trivy FS Scan') {
+                    steps {
+                        sh '''
+                            docker run --rm \
+                              -v /home/ubuntu/jenkins/workspace/twitter:/workspace \
+                              -v /home/ubuntu/.m2:/root/.m2:ro \
+                              aquasec/trivy:0.72.0 \
+                              fs \
+                              --format json \
+                              -o /workspace/trivy-fs-report.json \
+                              /workspace
+                        '''
+                    }
+                }
+
+                stage('Publish Artifacts') {
+                    steps {
+                        withMaven(
+                            globalMavenSettingsConfig: 'maven-settings',
+                            maven: 'maven',
+                            jdk: 'jdk17',
+                            traceability: true
+                        ) {
+                            sh 'mvn deploy'
+                        }
+                    }
+                }
+
+                stage('Prepare Worker Workspace') {
+                    steps {
+                        stash(
+                            name: 'application',
+                            includes: '**/*',
+                            excludes: '.git/**',
+                            useDefaultExcludes: false
+                        )
+                        echo "Application workspace transferred to worker"
+                    }
                 }
             }
         }
-      
-      
-      stage('Build') {
-            steps {
-                sh "mvn package -DskipTests"
+
+        stage('Worker Node') {
+            agent {
+                label 'worker'
             }
-        }
-      
-      
-      stage('Publish Artifacts') {
-            steps {
-                withMaven(
-                    globalMavenSettingsConfig: 'maven-settings',
-                    maven: 'maven3',
-                    traceability: true
-                ) {
-                    sh "mvn deploy"
+
+            stages {
+                stage('Restore Workspace') {
+                    steps {
+                        deleteDir()
+                        unstash 'application'
+                        echo "Workspace restored on worker"
+                    }
                 }
-            }
-        }
-      
-       stage('Docker Build') {
-            steps {
-                sh "docker build -t jeeva08raj/twitter:release-3 ."
-            }
-        }
-      
-      
-       stage('Trivy Image Scan') {
-            steps {
-                sh '''
-                mkdir -p /home/ubuntu/trivy-tmp
-                TMPDIR=/home/ubuntu/trivy-tmp \
-                trivy image --format json -o trivy-image.json jeeva08raj/twitter:release-3
-                '''
+
+                stage('Build Docker Image') {
+                    steps {
+                        sh """
+                            docker build \
+                              -t ${DOCKERHUB_REPO}:${IMAGE_TAG} .
+                        """
+                    }
                 }
-            }
-            
-            
-        stage('Docker Push') {
-            steps {
-                withDockerRegistry([ url: '', credentialsId: 'docker-cred-' ])  {
-                    sh "docker push jeeva08raj/twitter:release-3"
-                  }
-            }
-        }
-      
-        stage('K8-Deploy') {
-            steps {
-                withKubeConfig(
-                    credentialsId: 'k8-cred',
-                    namespace: 'webapps',
-                    serverUrl: 'https://8.231.72.242'
-                ) {
-                    sh "kubectl apply -f deployment-service.yml"
-                    sleep 20
+
+                stage('Trivy Image Scan') {
+                    steps {
+                        sh """
+                            docker run --rm \
+                              -v /var/run/docker.sock:/var/run/docker.sock \
+                              -v \$(pwd):/workspace \
+                              ${TRIVY_IMAGE} image \
+                              --timeout 30m \
+                              --format template \
+                              --template "@/contrib/html.tpl" \
+                              -o /workspace/${IMG_REPORT} \
+                              ${DOCKERHUB_REPO}:${IMAGE_TAG}
+                        """
+                    }
                 }
-            }
-        }
-         
-      
-        stage('Verify Deploy') {
-            steps {
-                withKubeConfig(
-                    credentialsId: 'k8-cred',
-                    namespace: 'webapps',
-                    serverUrl: 'https://8.231.72.242'
-                ) {
-                    sh "kubectl get pods -n webapps"
-                    sh "kubectl get svc -n webapps"
+
+
+                stage('Docker Login & Push') {
+                    steps {
+                        withCredentials([
+                            usernamePassword(
+                                credentialsId: 'dock-creds',
+                                usernameVariable: 'DOCKER_USER',
+                                passwordVariable: 'DOCKER_PASS'
+                            )
+                        ]) {
+                            sh """
+                                echo "\$DOCKER_PASS" | \
+                                docker login \
+                                  -u "\$DOCKER_USER" \
+                                  --password-stdin
+
+                                docker push \
+                                  ${DOCKERHUB_REPO}:${IMAGE_TAG}
+
+                                docker tag \
+                                  ${DOCKERHUB_REPO}:${IMAGE_TAG} \
+                                  ${DOCKERHUB_REPO}:latest
+
+                                docker push \
+                                  ${DOCKERHUB_REPO}:latest
+                            """
+                        }
+                    }
                 }
-            }
-        }
-        
-        
-        
-        
-    }   
-    
-    post {
-        always {
-            script {
-                def jobName = env.JOB_NAME
-                def buildNumber = env.BUILD_NUMBER
-                def pipelineStatus = currentBuild.currentResult
-                def bannerColor = (pipelineStatus == "SUCCESS") ? "green" : "red"
-                def body = """
-                <html>
-                <body>
-                    <div style="border: 4px solid ${bannerColor}; padding: 10px;">
-                        <h2>${jobName} - Build ${buildNumber}</h2>
-                        <div style="background-color: ${bannerColor}; padding: 10px;">
-                            <h3 style="color: white;">Pipeline Status: ${pipelineStatus}</h3>
-                        </div>
-                        <p>Check the <a href="${env.BUILD_URL}">console output</a></p>
-                    </div>
-                </body>
-                </html>
-                """
-                emailext(
-                    subject: "${jobName} - Build ${buildNumber} - ${pipelineStatus}",
-                    body: body,
-                    to: "jeevanrajeshgowda@gmail.com",
-                    from: "rockrollno121@gmail.com",
-                    replyTo: "4ra22cs040@rithassan.ac.in",
-                    mimeType: "text/html"
-                )
+
+                stage('Deploy App (K8s)') {
+                    steps {
+                        sh """
+                            set -e
+                            export KUBECONFIG=/home/ubuntu/.kube/config
+
+                            kubectl config current-context
+                            kubectl get nodes
+
+                            kubectl get namespace ${APP_NAMESPACE} || kubectl create namespace ${APP_NAMESPACE}
+
+                            ls -l deployment-service.yml
+
+                            kubectl apply \
+                              -f deployment-service.yml \
+                              -n ${APP_NAMESPACE}
+
+                            kubectl set image \
+                              deployment/bloggingapp-deployment \
+                              bloggingapp=${DOCKERHUB_REPO}:${IMAGE_TAG} \
+                              -n ${APP_NAMESPACE}
+
+                            kubectl rollout status \
+                              deployment/bloggingapp-deployment \
+                              -n ${APP_NAMESPACE} \
+                              --timeout=180s
+                        """
+                    }
+                }
+
+                stage('Verify Deployment') {
+                    steps {
+                        sh """
+                            set -e
+                            export KUBECONFIG=/home/ubuntu/.kube/config
+
+                            kubectl get deployment \
+                              bloggingapp-deployment \
+                              -n ${APP_NAMESPACE}
+
+                            kubectl get pods \
+                              -n ${APP_NAMESPACE} \
+                              -o wide
+
+                            kubectl get svc \
+                              -n ${APP_NAMESPACE}
+
+                            kubectl get deployment \
+                              bloggingapp-deployment \
+                              -n ${APP_NAMESPACE} \
+                              -o jsonpath='{.spec.template.spec.containers[0].image}'
+
+                            echo ""
+                        """
+                    }
+                }
+
+                stage('OWASP ZAP Scan') {
+                    steps {
+                        sh """
+                            docker run --rm \
+                              -u 0 \
+                              -v \$(pwd):/zap/wrk/:rw \
+                              ghcr.io/zaproxy/zaproxy:stable \
+                              zap-full-scan.py \
+                              -t ${TARGET_URL} \
+                              -g gen.conf \
+                              -r ${ZAP_REPORT_PATH} || true
+                        """
+                    }
+                }
             }
         }
     }
+
+    post {
+        success {
+            echo "Twitter DevSecOps pipeline completed successfully"
+        }
+
+        failure {
+            echo "Twitter DevSecOps pipeline failed"
+        }
+
+        always {
+            script {
+                if (fileExists("trivy-fs-report.json")) {
+                    echo "Trivy filesystem report generated"
+                } else {
+                    echo "Trivy filesystem report not found"
+                }
+
+                if (fileExists("${IMG_REPORT}")) {
+                    echo "Trivy image report generated"
+                } else {
+                    echo "Trivy image report not found"
+                }
+
+                if (fileExists("${ZAP_REPORT_PATH}")) {
+                    echo "ZAP report generated"
+                } else {
+                    echo "ZAP report not found"
+                }
+            }
+
+            archiveArtifacts(
+                artifacts: 'trivy-fs-report.json,trivy-image.html,Zap-Report.html',
+                allowEmptyArchive: true
+            )
+
+            sh 'docker logout || true'
+        }
+    }
 }
-    
