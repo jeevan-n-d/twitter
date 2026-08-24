@@ -10,7 +10,7 @@ pipeline {
     environment {
 
         GIT_URL = 'https://github.com/jeevan-n-d/twitter.git'
-        GIT_BRANCH = 'main'
+        GIT_BRANCH = 'dev'
 
         PROJECT_KEY = 'twitter-app'
         PROJECT_NAME = 'twitter-app'
@@ -27,15 +27,13 @@ pipeline {
         TARGET_URL = 'http://a34df0a3239464d4d8816dae857d3663-2001816633.ap-south-2.elb.amazonaws.com/'
     }
 
+/*
     options {
         timeout(time: 30, unit: 'MINUTES')
     }
+*/
 
     stages {
-
-        // ====================================================
-        // MASTER NODE
-        // ====================================================
 
         stage('Master Node') {
 
@@ -45,14 +43,8 @@ pipeline {
 
             stages {
 
-                // ====================================================
-                // CHECKOUT
-                // ====================================================
-
                 stage('Checkout') {
-
                     steps {
-
                         git(
                             branch: "${GIT_BRANCH}",
                             url: "${GIT_URL}"
@@ -60,43 +52,36 @@ pipeline {
                     }
                 }
 
-
-                // ====================================================
-                // COMPILE
-                // ====================================================
-
                 stage('Compile') {
-
                     steps {
-
                         sh 'mvn clean compile'
                     }
                 }
 
-
-                // ====================================================
-                // TEST
-                // ====================================================
-
-                stage('Test') {
-
+                stage('Build Application') {
                     steps {
-
-                        sh 'mvn test'
+                        sh 'mvn package'
                     }
                 }
 
-
-                // ====================================================
-                // SONARQUBE ANALYSIS
-                // ====================================================
+                stage('Trivy FS Scan') {
+                    steps {
+                        sh '''
+                            docker run --rm \
+                              -v /home/ubuntu/jenkins/workspace/twitter:/workspace \
+                              -v /home/ubuntu/.m2:/root/.m2:ro \
+                              aquasec/trivy:0.72.0 \
+                              fs \
+                              --format json \
+                              -o /workspace/trivy-fs-report.json \
+                              /workspace
+                        '''
+                    }
+                }
 
                 stage('SonarQube Analysis') {
-
                     steps {
-
                         script {
-
                             withSonarQubeEnv('sonar-server') {
 
                                 def scannerHome = tool 'sonar-scanner'
@@ -114,66 +99,20 @@ pipeline {
                     }
                 }
 
-
-                // ====================================================
-                // BUILD APPLICATION
-                // ====================================================
-
-                stage('Build Application') {
-
-                    steps {
-
-                        sh 'mvn package -DskipTests'
-                    }
-                }
-
-
-                // ====================================================
-                // PUBLISH ARTIFACTS
-                // ====================================================
-
                 stage('Publish Artifacts') {
-
                     steps {
-
                         withMaven(
                             globalMavenSettingsConfig: 'maven-settings',
                             maven: 'maven',
                             jdk: 'jdk17',
                             traceability: true
                         ) {
-
                             sh 'mvn deploy'
                         }
                     }
                 }
-
-
-                // ====================================================
-                // PREPARE WORKER WORKSPACE
-                // ====================================================
-
-                stage('Prepare Worker Workspace') {
-
-                    steps {
-
-                        stash(
-                            name: 'application',
-                            includes: '**/*',
-                            excludes: '.git/**',
-                            useDefaultExcludes: false
-                        )
-
-                        echo "Application workspace transferred to worker"
-                    }
-                }
             }
         }
-
-
-        // ====================================================
-        // WORKER NODE
-        // ====================================================
 
         stage('Worker Node') {
 
@@ -183,31 +122,8 @@ pipeline {
 
             stages {
 
-                // ====================================================
-                // RESTORE WORKSPACE
-                // ====================================================
-
-                stage('Restore Workspace') {
-
-                    steps {
-
-                        deleteDir()
-
-                        unstash 'application'
-
-                        echo "Workspace restored on worker"
-                    }
-                }
-
-
-                // ====================================================
-                // BUILD DOCKER IMAGE
-                // ====================================================
-
                 stage('Build Docker Image') {
-
                     steps {
-
                         sh """
                             docker build \
                               -t ${DOCKERHUB_REPO}:${IMAGE_TAG} .
@@ -215,62 +131,24 @@ pipeline {
                     }
                 }
 
-
-                // ====================================================
-                // TRIVY IMAGE SCAN
-                // ====================================================
-
                 stage('Trivy Image Scan') {
-
                     steps {
-
-                        sh """
-                            mvn dependency:resolve -Dmaven.repo.local=/tmp/maven-repository
-
-                            docker run --rm \
-                              -v /var/run/docker.sock:/var/run/docker.sock \
-                              -v \$(pwd):/workspace \
-                              ${TRIVY_IMAGE} image \
-                              --timeout 30m \
-                              --format template \
-                              --template "@/contrib/html.tpl" \
-                              -o /workspace/${IMG_REPORT} \
-                              ${DOCKERHUB_REPO}:${IMAGE_TAG}
-                        """
-                    }
-                }
-
-
-                // ====================================================
-                // TRIVY FILESYSTEM SCAN
-                // ====================================================
-
-                stage('Trivy FS Scan') {
-
-                    steps {
-
                         sh '''
                             docker run --rm \
-                              -v /home/ubuntu/jenkins/workspace/twitter:/workspace \
-                              -v /home/ubuntu/.m2:/root/.m2:ro \
-                              aquasec/trivy:0.72.0 \
-                              fs \
-                              --format json \
-                              -o /workspace/trivy-fs-report.json \
-                              /workspace
+                            -v /var/run/docker.sock:/var/run/docker.sock \
+                            -v $(pwd):/workspace \
+                            aquasec/trivy:0.72.0 \
+                            image \
+                            --format template \
+                            --template "@/contrib/html.tpl" \
+                            -o /workspace/trivy-image.html \
+                            jeeva08raj/twitter:${IMAGE_TAG}
                         '''
                     }
                 }
 
-
-                // ====================================================
-                // DOCKER LOGIN & PUSH
-                // ====================================================
-
                 stage('Docker Login & Push') {
-
                     steps {
-
                         withCredentials([
                             usernamePassword(
                                 credentialsId: 'dock-creds',
@@ -278,79 +156,41 @@ pipeline {
                                 passwordVariable: 'DOCKER_PASS'
                             )
                         ]) {
-
                             sh """
-                                echo "\$DOCKER_PASS" | \
-                                docker login \
-                                  -u "\$DOCKER_USER" \
-                                  --password-stdin
+                                echo "\$DOCKER_PASS" | docker login -u "\$DOCKER_USER" --password-stdin
 
-                                docker push \
-                                  ${DOCKERHUB_REPO}:${IMAGE_TAG}
+                                docker push ${DOCKERHUB_REPO}:${IMAGE_TAG}
 
-                                docker tag \
-                                  ${DOCKERHUB_REPO}:${IMAGE_TAG} \
-                                  ${DOCKERHUB_REPO}:latest
+                                docker tag ${DOCKERHUB_REPO}:${IMAGE_TAG} ${DOCKERHUB_REPO}:latest
 
-                                docker push \
-                                  ${DOCKERHUB_REPO}:latest
+                                docker push ${DOCKERHUB_REPO}:latest
                             """
                         }
                     }
                 }
 
-
-                // ====================================================
-                // KUBERNETES DEPLOYMENT
-                // ====================================================
-
                 stage('Deploy App (K8s)') {
-
                     steps {
-
                         sh """
                             set -e
 
-                            export KUBECONFIG=/home/ubuntu/.kube/config
-
-                            kubectl config current-context
-
                             kubectl get nodes
 
-                            kubectl get namespace ${APP_NAMESPACE} || kubectl create namespace ${APP_NAMESPACE}
-
+                            kubectl get namespace ${APP_NAMESPACE} 
                             ls -l deployment-service.yml
 
                             kubectl apply \
                               -f deployment-service.yml \
                               -n ${APP_NAMESPACE}
 
-                            kubectl set image \
-                              deployment/bloggingapp-deployment \
-                              bloggingapp=${DOCKERHUB_REPO}:${IMAGE_TAG} \
-                              -n ${APP_NAMESPACE}
-
-                            kubectl rollout status \
-                              deployment/bloggingapp-deployment \
-                              -n ${APP_NAMESPACE} \
-                              --timeout=180s
                         """
                     }
                 }
 
-
-                // ====================================================
-                // VERIFY DEPLOYMENT
-                // ====================================================
-
                 stage('Verify Deployment') {
-
                     steps {
-
                         sh """
                             set -e
-
-                            export KUBECONFIG=/home/ubuntu/.kube/config
 
                             kubectl get deployment \
                               bloggingapp-deployment \
@@ -363,25 +203,12 @@ pipeline {
                             kubectl get svc \
                               -n ${APP_NAMESPACE}
 
-                            kubectl get deployment \
-                              bloggingapp-deployment \
-                              -n ${APP_NAMESPACE} \
-                              -o jsonpath='{.spec.template.spec.containers[0].image}'
-
-                            echo ""
                         """
                     }
                 }
 
-
-                // ====================================================
-                // OWASP ZAP SCAN
-                // ====================================================
-
                 stage('OWASP ZAP Scan') {
-
                     steps {
-
                         sh """
                             docker run --rm \
                               -u 0 \
@@ -389,8 +216,7 @@ pipeline {
                               ghcr.io/zaproxy/zaproxy:stable \
                               zap-full-scan.py \
                               -t ${TARGET_URL} \
-                              -g gen.conf \
-                              -r ${ZAP_REPORT_PATH} || true
+                              -r ${ZAP_REPORT_PATH}  || true
                         """
                     }
                 }
@@ -398,19 +224,9 @@ pipeline {
         }
     }
 
-
-    // ====================================================
-    // POST ACTIONS
-    // ====================================================
-
     post {
 
-        // ====================================================
-        // SUCCESS EMAIL
-        // ====================================================
-
         success {
-
             echo "Twitter DevSecOps pipeline completed successfully"
 
             mail(
@@ -422,19 +238,12 @@ pipeline {
                 Job: ${env.JOB_NAME}
                 Build Number: ${env.BUILD_NUMBER}
                 Status: SUCCESS
-
                 Build URL:${env.BUILD_URL}
                 """
             )
         }
 
-
-        // ====================================================
-        // FAILURE EMAIL
-        // ====================================================
-
         failure {
-
             echo "Twitter DevSecOps pipeline failed"
 
             mail(
@@ -446,7 +255,6 @@ pipeline {
                 Job: ${env.JOB_NAME}
                 Build Number: ${env.BUILD_NUMBER}
                 Status: FAILURE
-
                 Please check the Jenkins console output.
 
                 Build URL:
@@ -455,53 +263,34 @@ pipeline {
             )
         }
 
-
-        // ====================================================
-        // ALWAYS
-        // ====================================================
-
         always {
-
             node('worker') {
 
                 script {
 
                     if (fileExists("trivy-fs-report.json")) {
-
                         echo "Trivy filesystem report generated"
-
                     } else {
-
                         echo "Trivy filesystem report not found"
                     }
 
-
                     if (fileExists("${IMG_REPORT}")) {
-
                         echo "Trivy image report generated"
-
                     } else {
-
                         echo "Trivy image report not found"
                     }
 
-
                     if (fileExists("${ZAP_REPORT_PATH}")) {
-
                         echo "ZAP report generated"
-
                     } else {
-
                         echo "ZAP report not found"
                     }
                 }
-
 
                 archiveArtifacts(
                     artifacts: 'trivy-fs-report.json,trivy-image.html,Zap-Report.html',
                     allowEmptyArchive: true
                 )
-
 
                 sh 'docker logout || true'
             }

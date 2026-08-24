@@ -21,7 +21,7 @@ echo "========================================"
 echo "Installing Maven, Git and utilities"
 echo "========================================"
 
-sudo apt install -y maven git curl unzip
+sudo apt install -y maven git curl unzip wget
 
 
 echo "========================================"
@@ -165,6 +165,40 @@ kubectl version --client
 
 
 # ============================================================
+# TERRAFORM
+# ============================================================
+
+echo "========================================"
+echo "Installing Terraform"
+echo "========================================"
+
+sudo apt update -y
+
+sudo apt install -y \
+    gnupg \
+    software-properties-common
+
+wget -O- https://apt.releases.hashicorp.com/gpg | \
+gpg --dearmor | \
+sudo tee /usr/share/keyrings/hashicorp-archive-keyring.gpg > /dev/null
+
+echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] \
+https://apt.releases.hashicorp.com $(lsb_release -cs) main" | \
+sudo tee /etc/apt/sources.list.d/hashicorp.list > /dev/null
+
+sudo apt update -y
+
+sudo apt install -y terraform
+
+
+echo "========================================"
+echo "Checking Terraform"
+echo "========================================"
+
+terraform version
+
+
+# ============================================================
 # FINAL
 # ============================================================
 
@@ -181,10 +215,13 @@ echo "✓ Docker"
 echo "✓ Docker Compose"
 echo "✓ AWS CLI v2"
 echo "✓ kubectl"
+echo "✓ Terraform"
 echo ""
+
 echo "IMPORTANT:"
 echo "Log out and log back in for Docker group permissions."
 echo ""
+
 echo "After reconnecting, run:"
 echo "docker ps"
 echo "docker --version"
@@ -192,3 +229,4 @@ echo "mvn -version"
 echo "java -version"
 echo "aws --version"
 echo "kubectl version --client"
+echo "terraform version"

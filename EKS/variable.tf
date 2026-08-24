@@ -2,9 +2,13 @@ variable "project_name" {
   default = "myproject"
 }
 
+variable "region" {
+  default = "ap-south-2"
+}
+
 variable "azs" {
   default = [
-    "ap-south-1a",
-    "ap-south-1b"
+    "ap-south-2a",
+    "ap-south-2b"
   ]
 }

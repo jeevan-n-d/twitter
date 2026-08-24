@@ -1,5 +1,16 @@
 services:
 
+  jenkins:
+    image: jenkins/jenkins:2.568.2-jdk21
+    container_name: jenkins
+    ports:
+      - "8080:8080"
+      - "50000:50000"
+    volumes:
+      - jenkins-data:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+
   sonarqube:
     image: sonarqube:community
     container_name: sonarqube
@@ -7,8 +18,6 @@ services:
       - "9000:9000"
     volumes:
       - sonarqube-data:/opt/sonarqube/data
-      - sonarqube-extensions:/opt/sonarqube/extensions
-      - sonarqube-logs:/opt/sonarqube/logs
     restart: unless-stopped
 
   nexus:
@@ -20,18 +29,10 @@ services:
       - nexus-data:/nexus-data
     restart: unless-stopped
 
-  trivy:
-    image: aquasec/trivy:0.72.0
-    container_name: trivy
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - trivy-cache:/root/.cache/trivy
-    entrypoint: ["trivy"]
-    command: ["--version"]
-
 volumes:
+
+  jenkins-data:
+
   sonarqube-data:
-  sonarqube-extensions:
-  sonarqube-logs:
+
   nexus-data:
-  trivy-cache:
