@@ -24,14 +24,8 @@ pipeline {
         APP_NAMESPACE = 'webapps'
 
         ZAP_REPORT_PATH = 'Zap-Report.html'
-        TARGET_URL = 'http://a34df0a3239464d4d8816dae857d3663-2001816633.ap-south-2.elb.amazonaws.com/'
+        TARGET_URL = 'a4ad5ace2119d440eace00ebd839011c-199032499.ap-south-2.elb.amazonaws.com'
     }
-
-/*
-    options {
-        timeout(time: 30, unit: 'MINUTES')
-    }
-*/
 
     stages {
 
@@ -76,12 +70,13 @@ pipeline {
                               -v /var/lib/docker/volumes/twitter_jenkins-data/_data/.m2:/root/.m2:ro \
                               aquasec/trivy:0.72.0 \
                               fs \
-                              --format json \
-                              -o /workspace/trivy-fs-report.json \
+                              --format template \
+                              --template "@/contrib/html.tpl" \
+                              -o /workspace/trivy-fs-report.html \
                               /workspace
                         '''
                         archiveArtifacts(
-                        artifacts: 'trivy-fs-report.json'
+                        artifacts: 'trivy-fs-report.html'
                         )
                     }
                 }
@@ -111,8 +106,7 @@ pipeline {
                         withMaven(
                             globalMavenSettingsConfig: 'maven-settings',
                             maven: 'maven',
-                            jdk: 'jdk17',
-                            traceability: true
+                            jdk: 'jdk17'
                         ) {
                             sh 'mvn deploy'
                         }
@@ -192,18 +186,15 @@ pipeline {
 
                 stage('Deploy App (K8s)') {
                     steps {
-                        sh """
-                            set -e
-
+                        sh """    
                             kubectl get nodes
-
+                            kubectl create namespace ${APP_NAMESPACE} || true
                             kubectl get namespace ${APP_NAMESPACE} 
                             ls -l deployment-service.yml
 
                             kubectl apply \
                               -f deployment-service.yml \
                               -n ${APP_NAMESPACE}
-
                         """
                     }
                 }
@@ -211,7 +202,6 @@ pipeline {
                 stage('Verify Deployment') {
                     steps {
                         sh """
-                            set -e
 
                             kubectl get deployment \
                               bloggingapp-deployment \
