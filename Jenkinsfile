@@ -10,7 +10,7 @@ pipeline {
     environment {
 
         GIT_URL = 'https://github.com/jeevan-n-d/twitter.git'
-        GIT_BRANCH = 'dev'
+        GIT_BRANCH = 'prod'
 
         PROJECT_KEY = 'twitter-app'
         PROJECT_NAME = 'twitter-app'
@@ -61,6 +61,10 @@ pipeline {
                 stage('Build Application') {
                     steps {
                         sh 'mvn package'
+                        stash(
+                            name: 'app-jar',
+                            includes: 'target/*.jar'
+                        )
                     }
                 }
 
@@ -124,6 +128,16 @@ pipeline {
             }
 
             stages {
+
+                stage('Checkout') {
+                   steps {
+                        git(
+                            branch: "${GIT_BRANCH}",
+                            url: "${GIT_URL}"
+                            )
+                        unstash 'app-jar'
+                        }
+                    }
 
                 stage('Build Docker Image') {
                     steps {
