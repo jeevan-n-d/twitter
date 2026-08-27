@@ -9,8 +9,8 @@ pipeline {
 
     environment {
 
-        GIT_URL = 'https://github.com/jeevan-n-d/twitter.git'
-        GIT_BRANCH = 'prod'
+        REPO_URL = 'https://github.com/jeevan-n-d/twitter.git'
+        REPO_BRANCH = 'prod'
 
         PROJECT_KEY = 'twitter-app'
         PROJECT_NAME = 'twitter-app'
@@ -40,8 +40,8 @@ pipeline {
                 stage('Checkout') {
                     steps {
                         git(
-                            branch: "${GIT_BRANCH}",
-                            url: "${GIT_URL}"
+                            branch: "${REPO_BRANCH}",
+                            url: "${REPO_URL}"
                         )
                     }
                 }
@@ -126,8 +126,8 @@ pipeline {
                 stage('Checkout') {
                    steps {
                         git(
-                            branch: "${GIT_BRANCH}",
-                            url: "${GIT_URL}"
+                            branch: "${REPO_BRANCH}",
+                            url: "${REPO_URL}"
                             )
                         unstash 'app-jar'
                         }
