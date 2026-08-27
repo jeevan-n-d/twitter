@@ -24,7 +24,7 @@ pipeline {
         APP_NAMESPACE = 'webapps'
 
         ZAP_REPORT_PATH = 'Zap-Report.html'
-        TARGET_URL = 'a4ad5ace2119d440eace00ebd839011c-199032499.ap-south-2.elb.amazonaws.com'
+        TARGET_URL = 'https://twitter.mycoolprojects.online'
     }
 
     stages {
