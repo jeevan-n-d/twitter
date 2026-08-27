@@ -68,14 +68,17 @@ pipeline {
                     steps {
                         sh '''
                             docker run --rm \
-                              -v /home/ubuntu/jenkins/workspace/twitter:/workspace \
-                              -v /home/ubuntu/.m2:/root/.m2:ro \
+                              -v /var/lib/docker/volumes/twitter_jenkins-data/_data/workspace/pipeline-job:/workspace \
+                              -v /var/lib/docker/volumes/twitter_jenkins-data/_data/.m2:/root/.m2:ro \
                               aquasec/trivy:0.72.0 \
                               fs \
                               --format json \
                               -o /workspace/trivy-fs-report.json \
                               /workspace
                         '''
+                        archiveArtifacts(
+                        artifacts: 'trivy-fs-report.json'
+                        )
                     }
                 }
 
@@ -144,6 +147,10 @@ pipeline {
                             -o /workspace/trivy-image.html \
                             jeeva08raj/twitter:${IMAGE_TAG}
                         '''
+                        archiveArtifacts(
+                        artifacts: 'trivy-image.html'
+                        )
+
                     }
                 }
 
@@ -218,6 +225,11 @@ pipeline {
                               -t ${TARGET_URL} \
                               -r ${ZAP_REPORT_PATH}  || true
                         """
+
+                        archiveArtifacts(
+                        artifacts: 'Zap-Report.html'
+                        )
+
                     }
                 }
             }
@@ -263,37 +275,5 @@ pipeline {
             )
         }
 
-        always {
-            node('worker') {
-
-                script {
-
-                    if (fileExists("trivy-fs-report.json")) {
-                        echo "Trivy filesystem report generated"
-                    } else {
-                        echo "Trivy filesystem report not found"
-                    }
-
-                    if (fileExists("${IMG_REPORT}")) {
-                        echo "Trivy image report generated"
-                    } else {
-                        echo "Trivy image report not found"
-                    }
-
-                    if (fileExists("${ZAP_REPORT_PATH}")) {
-                        echo "ZAP report generated"
-                    } else {
-                        echo "ZAP report not found"
-                    }
-                }
-
-                archiveArtifacts(
-                    artifacts: 'trivy-fs-report.json,trivy-image.html,Zap-Report.html',
-                    allowEmptyArchive: true
-                )
-
-                sh 'docker logout || true'
-            }
-        }
     }
 }

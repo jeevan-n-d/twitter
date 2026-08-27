@@ -30,9 +30,6 @@ services:
     restart: unless-stopped
 
 volumes:
-
   jenkins-data:
-
   sonarqube-data:
-
   nexus-data:

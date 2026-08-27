@@ -10,27 +10,27 @@ sudo apt update -y
 sudo apt upgrade -y
 
 
-echo "========================================"
-echo "Installing Java 17"
-echo "========================================"
-
-sudo apt install -y openjdk-17-jdk
-
+# ============================================================
+# JAVA 21
+# ============================================================
 
 echo "========================================"
-echo "Installing Maven, Git and utilities"
+echo "Installing Java 21"
 echo "========================================"
 
-sudo apt install -y maven git curl unzip wget
+sudo apt install -y openjdk-21-jdk
 
 
 echo "========================================"
-echo "Checking Java and Maven"
+echo "Checking Java"
 echo "========================================"
 
 java -version
-mvn -version
 
+
+# ============================================================
+# DOCKER
+# ============================================================
 
 echo "========================================"
 echo "Installing Docker dependencies"
@@ -208,9 +208,7 @@ echo "========================================"
 
 echo ""
 echo "Installed:"
-echo "✓ Java 17"
-echo "✓ Maven"
-echo "✓ Git"
+echo "✓ Java 21"
 echo "✓ Docker"
 echo "✓ Docker Compose"
 echo "✓ AWS CLI v2"
@@ -225,7 +223,7 @@ echo ""
 echo "After reconnecting, run:"
 echo "docker ps"
 echo "docker --version"
-echo "mvn -version"
+echo "docker compose version"
 echo "java -version"
 echo "aws --version"
 echo "kubectl version --client"
