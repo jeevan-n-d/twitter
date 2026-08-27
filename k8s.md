@@ -202,8 +202,3 @@ kubectl create secret docker-registry regcred \
   --docker-password=Jee$123@ND \
   -n webapps
 
-
-
-
-
-
