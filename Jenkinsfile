@@ -113,6 +113,8 @@ pipeline {
                               fs \
                               --format template \
                               --template="@/contrib/html.tpl" \
+                              --exit-code 1 \
+                              --severity CRITICAL,HIGH \
                               -o /workspace/trivy-fs-report.html \
                               /workspace
                         """
@@ -224,6 +226,8 @@ pipeline {
                               image \
                               --format template \
                               --template="@/contrib/html.tpl" \
+                              --exit-code 1 \
+                              --severity CRITICAL,HIGH \
                               -o /workspace/${IMG_REPORT} \
                               ${DOCKERHUB_REPO}:${IMAGE_TAG}
                         """
@@ -351,9 +355,7 @@ pipeline {
 
             mail(
                 to: 'jeevanrajeshgowda@gmail.com',
-
                 subject: "SUCCESS: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-
                 body: """
 Twitter DevSecOps Pipeline Completed Successfully
 
@@ -373,9 +375,7 @@ ${env.BUILD_URL}
 
             mail(
                 to: 'jeevanrajeshgowda@gmail.com',
-
                 subject: "FAILURE: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-
                 body: """
 Twitter DevSecOps Pipeline Failed
 
