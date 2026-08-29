@@ -29,6 +29,10 @@ pipeline {
 
     stages {
 
+        // ============================================================
+        // MASTER NODE
+        // ============================================================
+
         stage('Master Node') {
 
             agent {
@@ -36,6 +40,10 @@ pipeline {
             }
 
             stages {
+
+                // ----------------------------------------------------
+                // CHECKOUT
+                // ----------------------------------------------------
 
                 stage('Checkout') {
                     steps {
@@ -46,44 +54,34 @@ pipeline {
                     }
                 }
 
+                // ----------------------------------------------------
+                // COMPILE
+                // ----------------------------------------------------
+
                 stage('Compile') {
                     steps {
                         sh 'mvn clean compile'
                     }
                 }
 
+                // ----------------------------------------------------
+                // BUILD APPLICATION
+                // ----------------------------------------------------
+
                 stage('Build Application') {
                     steps {
                         sh 'mvn package'
-                        stash(
-                            name: 'app-jar',
-                            includes: 'target/*.jar'
-                        )
                     }
                 }
 
-                stage('Trivy FS Scan') {
-                    steps {
-                        sh '''
-                            docker run --rm \
-                              -v /var/lib/docker/volumes/twitter_jenkins-data/_data/workspace/pipeline-job:/workspace \
-                              -v /var/lib/docker/volumes/twitter_jenkins-data/_data/.m2:/root/.m2:ro \
-                              aquasec/trivy:0.72.0 \
-                              fs \
-                              --format template \
-                              --template "@/contrib/html.tpl" \
-                              -o /workspace/trivy-fs-report.html \
-                              /workspace
-                        '''
-                        archiveArtifacts(
-                        artifacts: 'trivy-fs-report.html'
-                        )
-                    }
-                }
+                // ----------------------------------------------------
+                // SONARQUBE ANALYSIS
+                // ----------------------------------------------------
 
                 stage('SonarQube Analysis') {
                     steps {
                         script {
+
                             withSonarQubeEnv('sonar-server') {
 
                                 def scannerHome = tool 'sonar-scanner'
@@ -101,19 +99,53 @@ pipeline {
                     }
                 }
 
+                // ----------------------------------------------------
+                // TRIVY FILESYSTEM SCAN
+                // ----------------------------------------------------
+
+                stage('Trivy FS Scan') {
+                    steps {
+
+                        sh """
+                            docker run --rm \
+                              -v \$(pwd):/workspace \
+                              ${TRIVY_IMAGE} \
+                              fs \
+                              --format template \
+                              --template="@/contrib/html.tpl" \
+                              -o /workspace/trivy-fs-report.html \
+                              /workspace
+                        """
+
+                        archiveArtifacts(
+                            artifacts: 'trivy-fs-report.html'
+                        )
+                    }
+                }
+
+                // ----------------------------------------------------
+                // PUBLISH JAR TO NEXUS
+                // ----------------------------------------------------
+
                 stage('Publish Artifacts') {
                     steps {
+
                         withMaven(
                             globalMavenSettingsConfig: 'maven-settings',
                             maven: 'maven',
                             jdk: 'jdk17'
                         ) {
+
                             sh 'mvn deploy'
                         }
                     }
                 }
             }
         }
+
+        // ============================================================
+        // WORKER NODE
+        // ============================================================
 
         stage('Worker Node') {
 
@@ -123,18 +155,53 @@ pipeline {
 
             stages {
 
+                // ----------------------------------------------------
+                // CHECKOUT
+                // ----------------------------------------------------
+
                 stage('Checkout') {
-                   steps {
+                    steps {
+
                         git(
                             branch: "${REPO_BRANCH}",
                             url: "${REPO_URL}"
-                            )
-                        unstash 'app-jar'
+                        )
+                    }
+                }
+
+                // ----------------------------------------------------
+                // DOWNLOAD JAR FROM NEXUS
+                // ----------------------------------------------------
+
+                stage('Download JAR from Nexus') {
+                    steps {
+
+                        withMaven(
+                            globalMavenSettingsConfig: 'maven-settings',
+                            maven: 'maven',
+                            jdk: 'jdk17'
+                        ) {
+
+                            sh '''
+                                mkdir -p target
+
+                                mvn dependency:get \
+                                  -Dartifact=com.example:twitter-app:1.0.1-SNAPSHOT:jar \
+                                  -Dtransitive=false \
+                                  -DremoteRepositories=maven-snapshots::default::http://18.60.255.40:8081/repository/maven-snapshots/ \
+                                  -Ddest=target/app.jar
+                            '''
                         }
                     }
+                }
+
+                // ----------------------------------------------------
+                // BUILD DOCKER IMAGE
+                // ----------------------------------------------------
 
                 stage('Build Docker Image') {
                     steps {
+
                         sh """
                             docker build \
                               -t ${DOCKERHUB_REPO}:${IMAGE_TAG} .
@@ -142,28 +209,38 @@ pipeline {
                     }
                 }
 
+                // ----------------------------------------------------
+                // TRIVY DOCKER IMAGE SCAN
+                // ----------------------------------------------------
+
                 stage('Trivy Image Scan') {
                     steps {
-                        sh '''
-                            docker run --rm \
-                            -v /var/run/docker.sock:/var/run/docker.sock \
-                            -v $(pwd):/workspace \
-                            aquasec/trivy:0.72.0 \
-                            image \
-                            --format template \
-                            --template "@/contrib/html.tpl" \
-                            -o /workspace/trivy-image.html \
-                            jeeva08raj/twitter:${IMAGE_TAG}
-                        '''
-                        archiveArtifacts(
-                        artifacts: 'trivy-image.html'
-                        )
 
+                        sh """
+                            docker run --rm \
+                              -v /var/run/docker.sock:/var/run/docker.sock \
+                              -v \$(pwd):/workspace \
+                              ${TRIVY_IMAGE} \
+                              image \
+                              --format template \
+                              --template="@/contrib/html.tpl" \
+                              -o /workspace/${IMG_REPORT} \
+                              ${DOCKERHUB_REPO}:${IMAGE_TAG}
+                        """
+
+                        archiveArtifacts(
+                            artifacts: "${IMG_REPORT}"
+                        )
                     }
                 }
 
+                // ----------------------------------------------------
+                // DOCKER LOGIN & PUSH
+                // ----------------------------------------------------
+
                 stage('Docker Login & Push') {
                     steps {
+
                         withCredentials([
                             usernamePassword(
                                 credentialsId: 'dock-creds',
@@ -171,25 +248,40 @@ pipeline {
                                 passwordVariable: 'DOCKER_PASS'
                             )
                         ]) {
+
                             sh """
-                                echo "\$DOCKER_PASS" | docker login -u "\$DOCKER_USER" --password-stdin
+                                echo "\$DOCKER_PASS" | docker login \
+                                  -u "\$DOCKER_USER" \
+                                  --password-stdin
 
-                                docker push ${DOCKERHUB_REPO}:${IMAGE_TAG}
+                                docker push \
+                                  ${DOCKERHUB_REPO}:${IMAGE_TAG}
 
-                                docker tag ${DOCKERHUB_REPO}:${IMAGE_TAG} ${DOCKERHUB_REPO}:latest
+                                docker tag \
+                                  ${DOCKERHUB_REPO}:${IMAGE_TAG} \
+                                  ${DOCKERHUB_REPO}:latest
 
-                                docker push ${DOCKERHUB_REPO}:latest
+                                docker push \
+                                  ${DOCKERHUB_REPO}:latest
                             """
                         }
                     }
                 }
 
+                // ----------------------------------------------------
+                // DEPLOY TO KUBERNETES
+                // ----------------------------------------------------
+
                 stage('Deploy App (K8s)') {
                     steps {
-                        sh """    
+
+                        sh """
                             kubectl get nodes
+
                             kubectl create namespace ${APP_NAMESPACE} || true
-                            kubectl get namespace ${APP_NAMESPACE} 
+
+                            kubectl get namespace ${APP_NAMESPACE}
+
                             ls -l deployment-service.yml
 
                             kubectl apply \
@@ -199,10 +291,14 @@ pipeline {
                     }
                 }
 
+                // ----------------------------------------------------
+                // VERIFY KUBERNETES DEPLOYMENT
+                // ----------------------------------------------------
+
                 stage('Verify Deployment') {
                     steps {
-                        sh """
 
+                        sh """
                             kubectl get deployment \
                               bloggingapp-deployment \
                               -n ${APP_NAMESPACE}
@@ -213,13 +309,17 @@ pipeline {
 
                             kubectl get svc \
                               -n ${APP_NAMESPACE}
-
                         """
                     }
                 }
 
+                // ----------------------------------------------------
+                // OWASP ZAP DAST SCAN
+                // ----------------------------------------------------
+
                 stage('OWASP ZAP Scan') {
                     steps {
+
                         sh """
                             docker run --rm \
                               -u 0 \
@@ -227,57 +327,68 @@ pipeline {
                               ghcr.io/zaproxy/zaproxy:stable \
                               zap-full-scan.py \
                               -t ${TARGET_URL} \
-                              -r ${ZAP_REPORT_PATH}  || true
+                              -r ${ZAP_REPORT_PATH} || true
                         """
 
                         archiveArtifacts(
-                        artifacts: 'Zap-Report.html'
+                            artifacts: "${ZAP_REPORT_PATH}"
                         )
-
                     }
                 }
             }
         }
     }
 
+    // ================================================================
+    // POST ACTIONS
+    // ================================================================
+
     post {
 
         success {
+
             echo "Twitter DevSecOps pipeline completed successfully"
 
             mail(
                 to: 'jeevanrajeshgowda@gmail.com',
-                subject: "SUCCESS: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-                body: """
-                Twitter DevSecOps Pipeline Completed Successfully
 
-                Job: ${env.JOB_NAME}
-                Build Number: ${env.BUILD_NUMBER}
-                Status: SUCCESS
-                Build URL:${env.BUILD_URL}
-                """
+                subject: "SUCCESS: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+
+                body: """
+Twitter DevSecOps Pipeline Completed Successfully
+
+Job: ${env.JOB_NAME}
+Build Number: ${env.BUILD_NUMBER}
+Status: SUCCESS
+
+Build URL:
+${env.BUILD_URL}
+"""
             )
         }
 
         failure {
+
             echo "Twitter DevSecOps pipeline failed"
 
             mail(
                 to: 'jeevanrajeshgowda@gmail.com',
+
                 subject: "FAILURE: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+
                 body: """
-                Twitter DevSecOps Pipeline Failed
+Twitter DevSecOps Pipeline Failed
 
-                Job: ${env.JOB_NAME}
-                Build Number: ${env.BUILD_NUMBER}
-                Status: FAILURE
-                Please check the Jenkins console output.
+Job: ${env.JOB_NAME}
+Build Number: ${env.BUILD_NUMBER}
+Status: FAILURE
 
-                Build URL:
-                ${env.BUILD_URL}
-                """
+Please check the Jenkins console output.
+
+Build URL:
+${env.BUILD_URL}
+"""
             )
         }
-
     }
 }
